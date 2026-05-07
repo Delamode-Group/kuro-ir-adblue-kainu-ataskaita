@@ -147,19 +147,17 @@ def _nacl_sealed_box(recv_pub_bytes, plaintext_bytes):
 # ─── GitHub Secret atnaujinimas ───────────────────────────────────────────────
 
 
-def update_github_secret(storage_json_str):
+def update_github_secret(storage_json_str, secret_name="AS24_STORAGE_STATE"):
     """
-    Atnaujina AS24_STORAGE_STATE GitHub Secret su naujomis cookies.
+    Atnaujina GitHub Secret su naujomis cookies (base64 encoded).
     Reikia GITHUB_TOKEN ir GITHUB_REPO aplinkos kintamuju.
     Grazina True jei sekminga.
     """
     token = os.getenv("GITHUB_TOKEN", "")
     repo = os.getenv("GITHUB_REPO", "")
     if not token or not repo:
-        print("[AS24] GITHUB_TOKEN arba GITHUB_REPO nenurodytas — Secret neatnaujinamas.")
+        print(f"[Secret] GITHUB_TOKEN arba GITHUB_REPO nenurodytas — '{secret_name}' neatnaujinamas.")
         return False
-
-    secret_name = "AS24_STORAGE_STATE"
     storage_b64 = base64.b64encode(storage_json_str.encode()).decode()
 
     headers = {
@@ -191,10 +189,10 @@ def update_github_secret(storage_json_str):
     )
     code = resp.status_code
     if code in (201, 204):
-        print(f"[AS24] GitHub Secret '{secret_name}' atnaujintas (HTTP {code}).")
+        print(f"[Secret] '{secret_name}' atnaujintas (HTTP {code}).")
         return True
     else:
-        print(f"[AS24] GitHub Secret klaida: HTTP {code} — {resp.text[:200]}")
+        print(f"[Secret] '{secret_name}' klaida: HTTP {code} — {resp.text[:200]}")
         return False
 
 

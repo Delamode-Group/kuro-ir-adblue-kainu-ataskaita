@@ -29,25 +29,20 @@ jobs:
       - name: Sukurti cookies direktorija
         run: mkdir -p cookies debug
 
-      - name: Atkurti Neste cookies cache
-        uses: actions/cache@v4
-        with:
-          path: cookies/neste_cookies.json
-          key: neste-cookies-${{ github.run_id }}
-          restore-keys: |
-            neste-cookies-
-
       - name: Paleisti kainu surinkima
         env:
           CK_ADBLUE_URL: ${{ secrets.CK_ADBLUE_URL }}
           NESTE_URL: ${{ secrets.NESTE_URL }}
           NESTE_EMAIL: ${{ secrets.NESTE_EMAIL }}
           NESTE_PASSWORD: ${{ secrets.NESTE_PASSWORD }}
+          NESTE_STORAGE_STATE: ${{ secrets.NESTE_STORAGE_STATE }}
           AS24_URL: ${{ secrets.AS24_URL }}
           AS24_EMAIL: ${{ secrets.AS24_EMAIL }}
           AS24_PASSWORD: ${{ secrets.AS24_PASSWORD }}
           AS24_CLIENT_ID: ${{ secrets.AS24_CLIENT_ID }}
           AS24_STORAGE_STATE: ${{ secrets.AS24_STORAGE_STATE }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
         run: python main.py
         continue-on-error: true
 

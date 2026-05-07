@@ -44,11 +44,11 @@ async def close_cookies(page):
         try:
             await page.wait_for_selector(
                 '#onetrust-banner-sdk, #onetrust-consent-sdk, [class*="cookie"], [id*="cookie"]',
-                timeout=5000,
+                timeout=3000,
             )
             print("[Neste] Cookie popup aptiktas")
         except Exception:
-            print("[Neste] Cookie popup nepasirade per 5s, bandome toliau")
+            print("[Neste] Cookie popup nepasirade per 3s, bandome toliau")
 
         # 1. OneTrust mygtuku ID — patikimiausi
         for selector in [
@@ -97,7 +97,42 @@ async def close_cookies(page):
         print(f"[Neste] Cookies klaida (nekritine): {e}")
 
 
-async def scrape_neste():
+def _load_neste_storage_state():
+    """
+    Nuskaito Neste sesijos busena is:
+      1. NESTE_STORAGE_STATE env kintamojo (GitHub Secret, base64)
+      2. Lokalaus failo cookies/neste_cookies.json
+    Grazina kelia i laikina faila arba None.
+    """
+    import base64, tempfile
+
+    # 1. Is GitHub Secret
+    storage_b64 = os.getenv("NESTE_STORAGE_STATE", "")
+    if storage_b64:
+        try:
+            storage_json = base64.b64decode(storage_b64).decode()
+            tmp = tempfile.NamedTemporaryFile(
+                suffix=".json", delete=False, mode="w", encoding="utf-8"
+            )
+            tmp.write(storage_json)
+            tmp.close()
+            cookies_count = len(json.loads(storage_json).get("cookies", []))
+            print(f"[Neste] Cookies is NESTE_STORAGE_STATE ({cookies_count} vnt.)")
+            return tmp.name
+        except Exception as e:
+            print(f"[Neste] NESTE_STORAGE_STATE klaida: {e}")
+
+    # 2. Is lokalaus failo
+    if os.path.exists(config.NESTE_COOKIES):
+        print(f"[Neste] Cookies is failo: {config.NESTE_COOKIES}")
+        return config.NESTE_COOKIES
+
+    print("[Neste] Cookies nerasti — bandysime prisijungti")
+    return None
+
+
+async def _scrape_neste_impl():
+    """Tikroji scrapinimo logika su visais Playwright veiksmais."""
     report_date = get_report_date()
     print(f"[Neste] Ataskaitos data: {report_date}")
 
@@ -106,16 +141,18 @@ async def scrape_neste():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
 
-        # Jei turime issaugotus cookies — uzkrauname juos (aplenkiame login + 2FA)
+        # Krauname sesijos busena jei yra
+        _storage_path = _load_neste_storage_state()
+        _tmp_file = _storage_path if (
+            _storage_path and _storage_path != config.NESTE_COOKIES
+        ) else None
+
         _ctx_kwargs = dict(
             viewport={"width": 1280, "height": 800},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
         )
-        if os.path.exists(config.NESTE_COOKIES):
-            _ctx_kwargs["storage_state"] = config.NESTE_COOKIES
-            print(f"[Neste] Krauname cookies is: {config.NESTE_COOKIES}")
-        else:
-            print("[Neste] Cookies failas nerastas — prisijungsime is naujo")
+        if _storage_path:
+            _ctx_kwargs["storage_state"] = _storage_path
 
         context = await browser.new_context(**_ctx_kwargs)
         page = await context.new_page()
@@ -123,7 +160,7 @@ async def scrape_neste():
         try:
             # -- 1. Einame i prisijungimo puslapi --
             print(f"[Neste] Einame i {config.NESTE_URL}")
-            await page.goto(config.NESTE_URL, wait_until="networkidle", timeout=60000)
+            await page.goto(config.NESTE_URL, wait_until="load", timeout=30000)
             await debug_screenshot(page, "01_neste_landing")
 
             # --- COOKIE HANDLING ---
@@ -142,10 +179,10 @@ async def scrape_neste():
                     if href.startswith("/"):
                         href = "https://www.neste.lt" + href
                     print(f"[Neste] Einame i login: {href}")
-                    await page.goto(href, wait_until="networkidle", timeout=30000)
+                    await page.goto(href, wait_until="load", timeout=20000)
                 else:
                     await prisijungti.first.click()
-                    await page.wait_for_load_state("networkidle", timeout=30000)
+                    await page.wait_for_load_state("load", timeout=20000)
                 await debug_screenshot(page, "03_neste_login_form")
 
                 # --- 1 zingsnis: Vartotojo vardas (identifier) ---
@@ -162,15 +199,15 @@ async def scrape_neste():
                     if await testi_btn.count() > 0:
                         await testi_btn.first.click()
                         print("[Neste] Paspaustas Submit/Testi")
-                        await page.wait_for_load_state("networkidle", timeout=15000)
-                        await page.wait_for_timeout(2000)
+                        await page.wait_for_load_state("load", timeout=10000)
+                        await page.wait_for_timeout(500)
 
                 await debug_screenshot(page, "04_neste_after_identifier")
 
                 # --- 2 zingsnis: Slaptazodis ---
                 pwd_input = page.locator('input[type="password"]:visible')
                 try:
-                    await pwd_input.wait_for(timeout=10000)
+                    await pwd_input.wait_for(timeout=8000)
                     print("[Neste] Password laukas atsirado")
                 except Exception:
                     print("[Neste] Password laukas nepasirade per 10s")
@@ -188,13 +225,13 @@ async def scrape_neste():
                     print(f"[Neste] Submit mygtuku: {submit_count}")
                     if submit_count > 0:
                         await submit.first.click()
-                        await page.wait_for_load_state("networkidle", timeout=30000)
+                        await page.wait_for_load_state("load", timeout=20000)
 
                 await debug_screenshot(page, "05_neste_after_login")
                 print(f"[Neste] URL po prisijungimo: {page.url}")
 
                 # ── 2FA aptikimas ──────────────────────────────────────────
-                await page.wait_for_timeout(1500)
+                await page.wait_for_timeout(500)
                 _twofa_found = False
                 for _twofa_sel in [
                     'input[name="code"]',
@@ -219,7 +256,7 @@ async def scrape_neste():
                 # ──────────────────────────────────────────────────────────
 
             # -- 2. Navigacija --
-            await page.wait_for_timeout(3000)
+            await page.wait_for_timeout(800)
             await debug_screenshot(page, "06_neste_looking_for_menu")
 
             links = await page.query_selector_all("a")
@@ -237,7 +274,7 @@ async def scrape_neste():
 
             if kainos_count > 0:
                 await kainos_link.first.click()
-                await page.wait_for_load_state("networkidle", timeout=15000)
+                await page.wait_for_load_state("load", timeout=10000)
                 await debug_screenshot(page, "07_neste_kainos_page")
             else:
                 # Bandome Ekstraneta
@@ -246,7 +283,7 @@ async def scrape_neste():
                 print(f"[Neste] 'Ekstranetas' nuorodu: {ekstra_count}")
                 if ekstra_count > 0:
                     await ekstranetas.first.click()
-                    await page.wait_for_load_state("networkidle", timeout=15000)
+                    await page.wait_for_load_state("load", timeout=10000)
                     await debug_screenshot(page, "07_neste_ekstranetas")
 
                 kainos_link2 = page.locator('a:has-text("kainos"), a:has-text("Kainos"), a:has-text("Sutarties")')
@@ -254,7 +291,7 @@ async def scrape_neste():
                 print(f"[Neste] 'Kainos' nuorodu (2 bandymas): {kainos_count2}")
                 if kainos_count2 > 0:
                     await kainos_link2.first.click()
-                    await page.wait_for_load_state("networkidle", timeout=15000)
+                    await page.wait_for_load_state("load", timeout=10000)
 
             await debug_screenshot(page, "08_neste_final_state")
             print(f"[Neste] Galutinis URL: {page.url}")
@@ -298,9 +335,21 @@ async def scrape_neste():
                 os.makedirs(os.path.dirname(config.NESTE_COOKIES), exist_ok=True)
                 await context.storage_state(path=config.NESTE_COOKIES)
                 print(f"[Neste] Cookies issaugoti: {config.NESTE_COOKIES}")
+
+                with open(config.NESTE_COOKIES, "r", encoding="utf-8") as _f:
+                    _storage_json = _f.read()
+                from as24_relogin import update_github_secret
+                update_github_secret(_storage_json, secret_name="NESTE_STORAGE_STATE")
             except Exception as _ce:
                 print(f"[Neste] Cookie save klaida (nekritine): {_ce}")
             # ──────────────────────────────────────────────────────────
+
+            # Istiname laikina faila jei buvo sukurtas
+            if _tmp_file:
+                try:
+                    os.unlink(_tmp_file)
+                except Exception:
+                    pass
 
             date_parts = report_date.split(".")
             results["date"] = f"{date_parts[2]}-{date_parts[1]}-{date_parts[0]}"
@@ -313,6 +362,16 @@ async def scrape_neste():
             await browser.close()
 
     return results
+
+
+async def scrape_neste():
+    """Apvalkalas su 120s timeout — neleis uzstrigti."""
+    import asyncio
+    try:
+        return await asyncio.wait_for(_scrape_neste_impl(), timeout=120)
+    except asyncio.TimeoutError:
+        print("[Neste] !! Timeout (120s) — scraperis uzstrigo, grazinami tustys rezultatai")
+        return {"diesel": None, "adblue": None, "date": None}
 
 
 def run_neste_scraper():

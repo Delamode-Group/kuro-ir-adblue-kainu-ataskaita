@@ -281,6 +281,19 @@ async def _handle_2fa(page) -> bool:
     return True
 
 
+# ─── GitHub Secret atnaujinimas ───────────────────────────────────────────────
+
+
+def _update_neste_secret(storage_json_str: str) -> bool:
+    """Atnaujina NESTE_STORAGE_STATE GitHub Secret. Naudoja as24_relogin logiką."""
+    try:
+        from as24_relogin import update_github_secret as _upd
+        return _upd(storage_json_str, secret_name="NESTE_STORAGE_STATE")
+    except Exception as e:
+        print(f"[Neste] Secret update klaida: {e}")
+        return False
+
+
 # ─── Pagrindinis prisijungimo srautas ─────────────────────────────────────────
 
 
@@ -455,10 +468,17 @@ async def main():
         with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
             json.dump(storage, f, ensure_ascii=False, indent=2)
 
+        # GitHub Secret atnaujinimas
+        _gh_ok = _update_neste_secret(json.dumps(storage, ensure_ascii=False))
+
         print()
         print("=" * 60)
-        print(f"Cookies issaugoti: {OUTPUT_FILE}")
-        print(f"Cookies kiekis  : {cookies_count}")
+        print(f"Cookies issaugoti : {OUTPUT_FILE}")
+        print(f"Cookies kiekis    : {cookies_count}")
+        if _gh_ok:
+            print("GitHub Secret     : NESTE_STORAGE_STATE atnaujintas")
+        else:
+            print("GitHub Secret     : neatnaujintas (nenustatytas GITHUB_TOKEN/GITHUB_REPO)")
         print("Kita 2FA uzklausas tikimetis po ~60-90 dienu.")
         print("=" * 60)
 
