@@ -1,6 +1,8 @@
 """
 Kuro kainu stebesenos sistema — nustatymai.
 Visi slaptazodziai ir prisijungimai imami is aplinkos kintamuju (GitHub Secrets).
+Pastaba: naudojame `os.getenv(...) or default`, kad TUSCIA env reiksme
+(pvz. nenustatytas GitHub Secret) nepakeistu numatytosios.
 """
 import os
 
@@ -9,15 +11,15 @@ CK_PDF_URL = "https://www.orlenlietuva.lt/LT/Wholesale/Prices/"
 CK_ADBLUE_URL = os.getenv("CK_ADBLUE_URL", "")
 
 # -- Neste --
-NESTE_URL = os.getenv("NESTE_URL", "https://www.neste.lt/lt")
+NESTE_URL = os.getenv("NESTE_URL") or "https://www.neste.lt/lt"
 NESTE_EMAIL = os.getenv("NESTE_EMAIL", "")
 NESTE_PASSWORD = os.getenv("NESTE_PASSWORD", "")
 NESTE_CLIENT = "Delamode Baltics"
 NESTE_COUNTRY = "Lietuva"
 
 # -- AS24 --
-AS24_URL = os.getenv("AS24_URL", "https://extranet.as24.com/extranet/lt/home")
-AS24_CLIENT_ID = os.getenv("AS24_CLIENT_ID", "688701")
+AS24_URL = os.getenv("AS24_URL") or "https://extranet.as24.com/extranet/lt/home"
+AS24_CLIENT_ID = os.getenv("AS24_CLIENT_ID") or "688701"
 AS24_EMAIL = os.getenv("AS24_EMAIL", "")
 AS24_PASSWORD = os.getenv("AS24_PASSWORD", "")
 
