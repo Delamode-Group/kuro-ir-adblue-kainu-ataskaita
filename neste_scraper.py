@@ -269,58 +269,95 @@ async def _scrape_neste_impl():
             print(f"[Neste] Puslapio pradzia: {page_head}")
 
             # -- 2b. Uzpildome ataskaitos forma (klientas, salis, data) --
+            # Neste naudoja Chosen.js: native <select> pasleptas, todel
+            # reiksmes nustatomos per JS + 'change'/'chosen:updated' eventus.
             try:
+                async def js_select(sel_loc, value, multiple=False):
+                    script = """(el, val) => {
+                        if (el.multiple) {
+                            Array.from(el.options).forEach(o => o.selected = (o.value === val));
+                        } else {
+                            el.value = val;
+                        }
+                        el.dispatchEvent(new Event('input', {bubbles: true}));
+                        el.dispatchEvent(new Event('change', {bubbles: true}));
+                        if (window.jQuery) {
+                            window.jQuery(el).trigger('chosen:updated');
+                            window.jQuery(el).trigger('change');
+                        }
+                    }"""
+                    await sel_loc.evaluate(script, value)
+
                 selects = page.locator("select")
                 sel_count = await selects.count()
                 print(f"[Neste] Select lauku: {sel_count}")
-                client_done = False
-                country_done = False
                 for i in range(sel_count):
                     sel = selects.nth(i)
-                    opts = await sel.evaluate("el => Array.from(el.options).map(o => o.text.trim())")
-                    print(f"[Neste] Select #{i} opcijos: {opts[:15]}")
-                    low = [o.lower() for o in opts]
-                    if not country_done and any("lietuva" in o for o in low):
-                        target = next((o for o in opts if o.lower() == "lietuva"), None) or next(o for o in opts if "lietuva" in o.lower())
-                        await sel.select_option(label=target)
-                        print(f"[Neste] Pasirinkta salis: {target}")
-                        country_done = True
-                        continue
-                    if not client_done:
-                        target = next((o for o in opts if "delamode" in o.lower()), None)
-                        if target is None:
-                            real = [o for o in opts if o and "pasirink" not in o.lower()]
-                            target = real[0] if real else None
-                        if target:
-                            await sel.select_option(label=target)
-                            print(f"[Neste] Pasirinktas klientas: {target}")
-                            client_done = True
+                    meta = await sel.evaluate(
+                        "el => ({id: el.id, name: el.name, multiple: el.multiple, opts: Array.from(el.options).map(o => [o.value, o.text.trim()])})"
+                    )
+                    print(f"[Neste] Select #{i} ({meta['name']}, multiple={meta['multiple']}): {meta['opts'][:12]}")
+                    texts = [t for v, t in meta["opts"]]
+                    low = [t.lower() for t in texts]
+
+                    if any("delamode" in t for t in low):
+                        val = next(v for v, t in meta["opts"] if "delamode" in t.lower())
+                        await js_select(sel, val)
+                        print(f"[Neste] Klientas pasirinktas (value={val})")
+                    elif any("lietuva" in t for t in low):
+                        val = next((v for v, t in meta["opts"] if t.strip().lower() == "lietuva"), None)
+                        if val is None:
+                            val = next(v for v, t in meta["opts"] if "lietuva" in t.lower())
+                        await js_select(sel, val)
+                        print(f"[Neste] Salis pasirinkta (value={val})")
+
+                await page.wait_for_timeout(800)
+
+                inputs_meta = await page.evaluate(
+                    "() => Array.from(document.querySelectorAll('input')).filter(i => i.type !== 'hidden').map(i => [i.type, i.id, i.name])"
+                )
+                print(f"[Neste] Inputai: {inputs_meta}")
+
+                dd, mm, yy = report_date.split(".")
+                date_el = None
+                for tp, iid, nm in inputs_meta:
+                    if "dat" in ((iid or "") + (nm or "")).lower() and iid:
+                        date_el = page.locator(f"#{iid}")
+                        break
+                if date_el is None:
+                    dl = page.locator("input[type='date']")
+                    if await dl.count() > 0:
+                        date_el = dl.first
+                if date_el is not None:
+                    dtype = await date_el.evaluate("el => el.type")
+                    dval = f"{yy}-{mm}-{dd}" if dtype == "date" else report_date
+                    await date_el.evaluate(
+                        """(el, val) => {
+                            el.value = val;
+                            el.dispatchEvent(new Event('input', {bubbles: true}));
+                            el.dispatchEvent(new Event('change', {bubbles: true}));
+                        }""",
+                        dval,
+                    )
+                    print(f"[Neste] Data nustatyta: {dval} (type={dtype})")
+                else:
+                    print("[Neste] Datos laukas nerastas")
+
                 await page.wait_for_timeout(500)
 
-                # Data: bandome date input, po to text input
-                dd, mm, yy = report_date.split(".")
-                date_inputs = page.locator("input[type='date']")
-                if await date_inputs.count() > 0:
-                    await date_inputs.first.fill(f"{yy}-{mm}-{dd}")
-                    print(f"[Neste] Data ivesta (date input): {yy}-{mm}-{dd}")
-                else:
-                    txt_inputs = page.locator("input[type='text']:visible")
-                    ti = await txt_inputs.count()
-                    print(f"[Neste] Matomu text inputu: {ti}")
-                    if ti > 0:
-                        await txt_inputs.first.fill(report_date)
-                        print(f"[Neste] Data ivesta (text input): {report_date}")
-
-                submit_btn = page.locator('button:has-text("saugoti"), input[type="submit"], button[type="submit"]')
-                if await submit_btn.count() > 0:
-                    await submit_btn.first.click()
+                submit_btn = page.locator('#edit-submit, button:has-text("saugoti"), input[type="submit"], button[type="submit"]')
+                sb = await submit_btn.count()
+                print(f"[Neste] Submit kandidatu: {sb}")
+                if sb > 0:
+                    try:
+                        await submit_btn.first.click(timeout=5000)
+                    except Exception:
+                        await submit_btn.first.evaluate("el => el.click()")
                     print("[Neste] Paspausta 'Issaugoti pasirinkimus'")
-                    await page.wait_for_timeout(5000)
+                    await page.wait_for_timeout(6000)
                     await debug_screenshot(page, "09_neste_report")
-                    rep_head = (await page.inner_text("body"))[:600].replace("\n", " | ")
+                    rep_head = (await page.inner_text("body"))[:700].replace("\n", " | ")
                     print(f"[Neste] Po formos: {rep_head}")
-                else:
-                    print("[Neste] Submit mygtukas nerastas")
             except Exception as fe:
                 print(f"[Neste] Formos pildymo klaida: {fe}")
 
