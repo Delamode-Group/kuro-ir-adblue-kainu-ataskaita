@@ -345,6 +345,15 @@ async def _scrape_neste_impl():
 
                 await page.wait_for_timeout(500)
 
+                # Ataskaita BE PVM (pagal originalu Egles dizaina)
+                vat_cb = page.locator("#edit-include-vat")
+                if await vat_cb.count() > 0:
+                    if await vat_cb.evaluate("el => el.checked"):
+                        await vat_cb.evaluate("el => { el.checked = false; el.dispatchEvent(new Event('change', {bubbles: true})); }")
+                        print("[Neste] 'Rodyti kainas su PVM' isjungta — ataskaita be PVM")
+                    else:
+                        print("[Neste] PVM varnele jau isjungta — ataskaita be PVM")
+
                 submit_btn = page.locator('form:has(#edit-price-date) input[type="submit"], form:has(#edit-price-date) button[type="submit"], #edit-submit--2')
                 sb = await submit_btn.count()
                 print(f"[Neste] Submit kandidatu: {sb}")
