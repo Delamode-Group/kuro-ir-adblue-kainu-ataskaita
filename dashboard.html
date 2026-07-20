@@ -378,7 +378,11 @@ function renderCards(containerId, series){
 
     c.appendChild(card);
     const agg = aggregateSeries(s.dates, s.data, PERIOD);
-    buildChart(canvasId, agg.dates, agg.data, clr, agg.labels);
+    // Grafiko spalva: dienos rezime - pagal vakar; kitaip - pagal periodo pokyti
+    const chartClr = (PERIOD === 'day')
+      ? clr
+      : getColor(agg.data[agg.data.length-1], agg.data.length >= 2 ? agg.data[agg.data.length-2] : null);
+    buildChart(canvasId, agg.dates, agg.data, chartClr, agg.labels);
   });
 }
 
