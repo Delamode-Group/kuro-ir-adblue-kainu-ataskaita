@@ -193,6 +193,7 @@ body{font-family:var(--F);background:var(--bg0);color:var(--t1);min-height:100vh
 const JSON_URL = 'kuro_kainos.json';
 const PASSWORD = 'Kuras';
 let DATA = null, EM = false, charts = {};
+let PERIOD = localStorage.getItem('kp_period') || 'day';
 
 // ── Theme ──
 function toggleTheme(){
@@ -262,8 +263,6 @@ async function init(){
 // ══════════════════════════════════════════════
 // Rendering
 // ══════════════════════════════════════════════
-let PERIOD = localStorage.getItem('kp_period') || 'day';
-
 function isoWeekKey(y, m, d){
   const t = new Date(Date.UTC(y, m-1, d));
   const dayn = (t.getUTCDay() + 6) % 7;
