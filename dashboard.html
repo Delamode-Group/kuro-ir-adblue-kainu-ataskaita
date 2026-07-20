@@ -548,7 +548,7 @@ function buildChart(canvasId, dates, data, colorVar, periodLabels){
         }
       },
       scales:{
-        x:{ticks:{maxTicksLimit:8,font:{size:9,family:'Outfit'},color:textColor},grid:{display:false}},
+        x:{ticks:{maxTicksLimit: periodLabels ? (periodLabels.length + 1) : 8, autoSkip: periodLabels ? false : true, maxRotation: periodLabels ? 60 : 0, minRotation: 0, font:{size:9,family:'Outfit'},color:textColor},grid:{display:false}},
         y:{min:yMin,ticks:{font:{size:9,family:'IBM Plex Mono'},color:textColor,callback:v=>v.toFixed(3)},grid:{color:gridColor}}
       }
     }
@@ -564,7 +564,7 @@ function renderTable(){
   if(DATA.as24_dz) DATA.as24_dz.forEach(s=>addD(s.dates));
   if(DATA.as24_ab) DATA.as24_ab.forEach(s=>addD(s.dates));
   const dates = [...allDates].sort().reverse();
-  const showDates = dates.slice(0,60);
+  const showDates = dates;  // visa istorija (naujausios virsuje)
 
   const sources = getAllSources();
   document.getElementById('tbl-count').textContent = dates.length + ' dienų';
